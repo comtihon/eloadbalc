@@ -1,0 +1,22 @@
+{application, eloadbalc,
+  [
+    {description, ""},
+    {vsn, "1"},
+    {registered, []},
+    {applications, [
+      kernel,
+      stdlib,
+      os_mon
+    ]},
+    {mod, {eloadbalc_app, []}},
+    {env,
+      [
+        {
+          conf,
+          {
+            cpu,
+            [{'eloadbalc@127.0.0.1', 2000, 70}]
+          }
+        }
+      ]}
+  ]}.
