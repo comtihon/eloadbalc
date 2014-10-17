@@ -31,7 +31,7 @@
 %%% API
 %%%===================================================================
 get_all_data() ->
-  ets:foldl(fun check_data/2, [], ?ETS).
+  ets:foldl(fun check_data/2, {[], []}, ?ETS).
 
 -spec add_node({Node :: atom(), Strgategy :: atom(), Max :: integer(), Time :: integer() | realtime}) -> ok.
 add_node(Node) ->
@@ -121,7 +121,7 @@ handle_cast(_Request, State) ->
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_info({update, Name, Time}, State) -> %update node information
-  {Name, _, Max, Strategy} = ets:lookup(?ETS, Name),
+  [{Name, _, Max, Strategy}] = ets:lookup(?ETS, Name),
   Data = eb_logic:fetch_node_data(Name, Strategy),
   check_max(Name, Data, Max, Strategy),
   timer:send_after(Time, {update, Name, Time}),

@@ -25,6 +25,7 @@ start_link(Conf) ->
 %% Example:
 %% {
 %%  cpu,
+%%  callback_module,
 %%  [{node1@example.com, 2000, 70},
 %%  {node2@example.com, realtime, 50}]
 %% }
