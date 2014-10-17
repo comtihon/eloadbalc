@@ -25,7 +25,7 @@
 -define(SERVER, ?MODULE).
 -define(ETS, nodes_load).
 
--record(state, {}).
+-record(state, {strategy :: atom()}).
 
 %%%===================================================================
 %%% API
@@ -69,7 +69,7 @@ start_link(Params) ->
 init({Strategy, NodeList}) when Strategy == ram; Strategy == cpu; Strategy == counter ->
   ets:new(?ETS, [named_table, protected, {read_concurrency, true}]),
   set_up_monitoring(NodeList, Strategy),
-  {ok, #state{}}.
+  {ok, #state{strategy = Strategy}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -86,8 +86,8 @@ init({Strategy, NodeList}) when Strategy == ram; Strategy == cpu; Strategy == co
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_call({add, {Node, Strgategy, Max, Time}}, _From, State) ->
-  set_up_node({Node, Time, Max}, Strgategy),
+handle_call({add, {Node, Max, Time}}, _From, State = #state{strategy = Strategy}) ->
+  set_up_node({Node, Time, Max}, Strategy),
   {reply, ok, State};
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
@@ -163,6 +163,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%% Internal functions
 %%%===================================================================
 %% @private
+set_up_monitoring([], _) -> ok;
 set_up_monitoring(NodeList, Strategy) when is_list(NodeList) ->
   lists:foreach(fun(Node) -> set_up_node(Node, Strategy) end, NodeList).
 
