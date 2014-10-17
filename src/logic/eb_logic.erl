@@ -10,14 +10,7 @@
 -author("tihon").
 
 %% API
--export([fetch_node_data/2, get_less_loaded/0]).
-
-%% get less loaded node
-get_less_loaded() ->
-  {Ready, Realtime} = eb_logic_worker:get_all_data(),
-  RTData = get_realtime_data(Realtime),
-  All = lists:append([Ready, RTData]),
-  hd(lists:sort(fun sort_results/2, All)).
+-export([fetch_node_data/2, sort_results/2, get_realtime_data/1]).
 
 %% Fetch statistics data from a remote node
 -spec fetch_node_data(Node :: atom(), Strategy :: cpu | ram | counter) -> Data :: integer().
@@ -25,14 +18,9 @@ fetch_node_data(Node, cpu) -> process_result(rpc:call(Node, eb_collector, collec
 fetch_node_data(Node, ram) -> process_result(rpc:call(Node, eb_collector, collect_ram_usage, []));
 fetch_node_data(Node, counter) -> process_result(rpc:call(Node, eb_collector, collect_run_queue, [])).
 
-process_result({badrpc, _}) -> off;
-process_result(Data) -> Data.
-
-%% @private
 sort_results({_, A}, {_, B}) when A =< B -> true;
 sort_results(_, _) -> false.
 
-%% @private
 get_realtime_data(Realtime) ->
   lists:foldl(
     fun({Node, Max, Strategy}, Collected) ->
@@ -41,3 +29,7 @@ get_realtime_data(Realtime) ->
         Data -> [{Node, Data} | Collected]
       end
     end, [], Realtime).
+
+%% @private
+process_result({badrpc, _}) -> off;
+process_result(Data) -> Data.

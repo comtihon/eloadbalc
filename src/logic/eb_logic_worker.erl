@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, get_all_data/0]).
+-export([start_link/1, get_all_data/0, add_node/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -32,6 +32,10 @@
 %%%===================================================================
 get_all_data() ->
   ets:foldl(fun check_data/2, [], ?ETS).
+
+-spec add_node({Node :: atom(), Strgategy :: atom(), Max :: integer(), Time :: integer() | realtime}) -> ok.
+add_node(Node) ->
+  gen_server:call(?MODULE, {add, Node}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -82,6 +86,9 @@ init({Strategy, NodeList}) when Strategy == ram; Strategy == cpu; Strategy == co
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
+handle_call({add, {Node, Strgategy, Max, Time}}, _From, State) ->
+  set_up_node({Node, Time, Max}, Strgategy),
+  {reply, ok, State};
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
 
@@ -157,17 +164,15 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %% @private
 set_up_monitoring(NodeList, Strategy) when is_list(NodeList) ->
-  lists:foreach(
-    fun({Name, Time, Max}) when is_atom(Name) ->
-      case Time of
-        realtime -> %in case of realtime do not set the timer
-          ets:insert(?ETS, {Name, realtime, Max, Strategy});
-        Time -> %set the update timer, make first-time update, populate the table
-          timer:send_after(Time, {update, Name, Time}),
-          Data = eb_logic:fetch_node_data(Name, Strategy),
-          ets:insert(?ETS, {Name, Data, Max, Strategy})
-      end
-    end, NodeList).
+  lists:foreach(fun(Node) -> set_up_node(Node, Strategy) end, NodeList).
+
+%% @private
+set_up_node({Name, realtime, Max}, Strategy) when is_atom(Name) ->
+  ets:insert(?ETS, {Name, realtime, Max, Strategy});
+set_up_node({Name, Time, Max}, Strategy) when is_atom(Name) ->
+  timer:send_after(Time, {update, Name, Time}),
+  Data = eb_logic:fetch_node_data(Name, Strategy),
+  ets:insert(?ETS, {Name, Data, Max, Strategy}).
 
 %% @private
 check_max(Node, Max, Current, Strategy) when Current > Max -> ets:insert(?ETS, {Node, off, Max, Strategy});

@@ -24,9 +24,12 @@ Where Metric is atom `cpu`, `ram` or `counter`.
 `Time` is an atom `realtime` or integer value in milliseconds, means update frequency of statistics. Realtime requests 
 will ask node on every `get_less_loaded` node request. They are more direct, but can produce load themselves.  
 `MaxValue` is an integer value of maximum load. If current load exceeds this value - node will be turned off - and won't 
-act in `get_less_loaded` calls.
+act in `get_less_loaded` calls.  
+If you want to add your nodes after configuring balancer - use `eloadbalc:add_node/4`. It takes these parameters: 
+`Node`, `Metric`, `MaxValue`, `UpdateTime`. __Important!__ do not set `Metric` different, than in supervisor conf, as comparing 
+less loaded node assumed to use the same metric.
 
 #### Usage
 To connect eloadbalc to your app - add `eloadbalc_sup` to your supervision tree, and pass the configuration to it. It 
-will start one server per your balancer system node. Than you can use `eb_logic:get_less_loaded/0` to obtain less loaded
+will start one server per your balancer system node. Than you can use `eloadbalc:get_less_loaded/0` to obtain less loaded
  node.
