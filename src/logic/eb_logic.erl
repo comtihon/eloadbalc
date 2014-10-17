@@ -21,9 +21,12 @@ get_less_loaded() ->
 
 %% Fetch statistics data from a remote node
 -spec fetch_node_data(Node :: atom(), Strategy :: cpu | ram | counter) -> Data :: integer().
-fetch_node_data(Node, cpu) -> rpc:call(Node, eb_collector, collect_cpu_usage, []);
-fetch_node_data(Node, ram) -> rpc:call(Node, eb_collector, collect_ram_usage, []);
-fetch_node_data(Node, counter) -> rpc:call(Node, eb_collector, collect_run_queue, []).
+fetch_node_data(Node, cpu) -> process_result(rpc:call(Node, eb_collector, collect_cpu_usage, []));
+fetch_node_data(Node, ram) -> process_result(rpc:call(Node, eb_collector, collect_ram_usage, []));
+fetch_node_data(Node, counter) -> process_result(rpc:call(Node, eb_collector, collect_run_queue, [])).
+
+process_result({badrpc, _}) -> off;
+process_result(Data) -> Data.
 
 %% @private
 sort_results({_, A}, {_, B}) when A =< B -> true;
@@ -34,7 +37,7 @@ get_realtime_data(Realtime) ->
   lists:foldl(
     fun({Node, Max, Strategy}, Collected) ->
       case fetch_node_data(Node, Strategy) of
-        Data when Data > Max -> Collected;
+        Data when Data > Max; Data == off -> Collected;
         Data -> [{Node, Data} | Collected]
       end
     end, [], Realtime).

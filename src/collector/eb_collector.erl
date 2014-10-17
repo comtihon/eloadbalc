@@ -11,7 +11,7 @@
 
 %% API
 -export([collect_cpu_usage/0, collect_ram_usage/0, collect_run_queue/0]).
-%TODO deal with nodedown errors!
+
 %% Get cpu persentage usage
 -spec collect_cpu_usage() -> integer().
 collect_cpu_usage() ->
