@@ -65,7 +65,7 @@ start_link(Params) ->
 init({Strategy, NodeList}) when Strategy == ram; Strategy == cpu; Strategy == counter ->
   ets:new(?ETS, [named_table, protected, {read_concurrency, true}]),
   set_up_monitoring(NodeList, Strategy),
-  {ok, #state}.
+  {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
