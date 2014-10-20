@@ -15,7 +15,12 @@
           conf,
           {
             cpu,
-            [{'eloadbalc@127.0.0.1', 2000, 70}]
+            [
+              {
+                'eloadbalc@127.0.0.1',
+                2000, %connect timeout after badrpc
+                200,  %regular update period
+                70}]  %max load percentage
           }
         }
       ]}

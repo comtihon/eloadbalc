@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, get_all_data/0, add_node/1]).
+-export([start_link/1, get_all_data/0, add_node/1, restart_node/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -25,17 +25,29 @@
 -define(SERVER, ?MODULE).
 -define(ETS, nodes_load).
 
--record(state, {strategy :: atom()}).
+-record(state,
+{
+  strategy :: atom(), %check strategy for logic
+  timelist :: proplists:proplist()  %pairs of node-start time
+}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+%% get all data from table
+-spec get_all_data() -> {Ready :: list(), Realtime :: list()}.
 get_all_data() ->
   ets:foldl(fun check_data/2, {[], []}, ?ETS).
 
+%% add node for checking. Will run update timer (if not realtime) and will update node's data
 -spec add_node({Node :: atom(), Strgategy :: atom(), Max :: integer(), Time :: integer() | realtime}) -> ok.
 add_node(Node) ->
   gen_server:call(?MODULE, {add, Node}).
+
+%% switch realtime node monitoring and restart it later.
+-spec restart_node(Node :: atom()) -> ok.
+restart_node(Node) ->
+  gen_server:cast(?MODULE, {reconnect, Node}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -51,7 +63,7 @@ start_link(Params) ->
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-%TODO dynamic nodes adding and deleting, changing timers and strategy
+%TODO dynamic nodes deleting, changing timers and strategy
 %%--------------------------------------------------------------------
 %% @private
 %% @doc
@@ -68,8 +80,8 @@ start_link(Params) ->
   {stop, Reason :: term()} | ignore).
 init({Strategy, NodeList}) when Strategy == ram; Strategy == cpu; Strategy == counter ->
   ets:new(?ETS, [named_table, protected, {read_concurrency, true}]),
-  set_up_monitoring(NodeList, Strategy),
-  {ok, #state{strategy = Strategy}}.
+  StartTimeList = set_up_monitoring(NodeList, Strategy),  %set up monitoring - launch update timers for no rt nodes
+  {ok, #state{strategy = Strategy, timelist = StartTimeList}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -86,9 +98,9 @@ init({Strategy, NodeList}) when Strategy == ram; Strategy == cpu; Strategy == co
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), Reply :: term(), NewState :: #state{}} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_call({add, {Node, Max, Time}}, _From, State = #state{strategy = Strategy}) ->
-  set_up_node({Node, Time, Max}, Strategy),
-  {reply, ok, State};
+handle_call({add, Node}, _From, State = #state{strategy = Strategy, timelist = Timelist}) ->  %add node dynamically
+  Pair = set_up_node(Node, Strategy), % set monitoring, launch timer if not rt, cave conf
+  {reply, ok, State#state{timelist = [Pair | Timelist]}}; %add to time restart list
 handle_call(_Request, _From, State) ->
   {reply, ok, State}.
 
@@ -103,6 +115,12 @@ handle_call(_Request, _From, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
+handle_cast({reconnect, Name}, State = #state{timelist = TimeList}) ->  %reconnect to node - realtime call
+  case reconnect_later(Name, TimeList) of
+    true -> turn_off_node(ets:lookup(?ETS, Name));  %set this node to off for realtime calls
+    fase -> ok  %can't set reconnect timer - do not turn off the node
+  end,
+  {noreply, State};
 handle_cast(_Request, State) ->
   {noreply, State}.
 
@@ -120,11 +138,14 @@ handle_cast(_Request, State) ->
   {noreply, NewState :: #state{}} |
   {noreply, NewState :: #state{}, timeout() | hibernate} |
   {stop, Reason :: term(), NewState :: #state{}}).
-handle_info({update, Name, Time}, State) -> %update node information
+handle_info({update, Name, Time}, State = #state{timelist = TimeList}) -> %update node information
   [{Name, _, Max, Strategy}] = ets:lookup(?ETS, Name),
-  Data = eb_logic:fetch_node_data(Name, Strategy),
-  check_max(Name, Data, Max, Strategy),
-  timer:send_after(Time, {update, Name, Time}),
+  case eb_logic:fetch_node_data(Name, Strategy) of  %got rpc error, node is down
+    off -> reconnect_later(Name, TimeList); %reconnect to it later
+    Data ->
+      check_max(Name, Data, Max, Strategy), %check max logic  (off node or no)
+      timer:send_after(Time, {update, Name, Time})  %update timer
+  end,
   {noreply, State};
 handle_info(_Info, State) ->
   {noreply, State}.
@@ -165,15 +186,17 @@ code_change(_OldVsn, State, _Extra) ->
 %% @private
 set_up_monitoring([], _) -> ok;
 set_up_monitoring(NodeList, Strategy) when is_list(NodeList) ->
-  lists:foreach(fun(Node) -> set_up_node(Node, Strategy) end, NodeList).
+  lists:foldl(fun(Node, Acc) -> [set_up_node(Node, Strategy) | Acc] end, [], NodeList).
 
 %% @private
-set_up_node({Name, realtime, Max}, Strategy) when is_atom(Name) ->
-  ets:insert(?ETS, {Name, realtime, Max, Strategy});
-set_up_node({Name, Time, Max}, Strategy) when is_atom(Name) ->
+set_up_node({Name, StartTime, realtime, Max}, Strategy) when is_atom(Name) -> %% Mark rt node as rt and save its conf
+  ets:insert(?ETS, {Name, realtime, Max, Strategy}),
+  {Name, StartTime};
+set_up_node({Name, StartTime, Time, Max}, Strategy) when is_atom(Name) -> %% Run timer, get first launch data and save conf
   timer:send_after(Time, {update, Name, Time}),
   Data = eb_logic:fetch_node_data(Name, Strategy),
-  ets:insert(?ETS, {Name, Data, Max, Strategy}).
+  ets:insert(?ETS, {Name, Data, Max, Strategy}),
+  {Name, StartTime}.
 
 %% @private
 check_max(Node, Max, Current, Strategy) when Current > Max -> ets:insert(?ETS, {Node, off, Max, Strategy});
@@ -183,3 +206,17 @@ check_max(Node, Max, Current, Strategy) -> ets:insert(?ETS, {Node, Current, Max,
 check_data({Node, realtime, Max, Strategy}, {Ready, RT}) -> {Ready, [{Node, Max, Strategy} | RT]};
 check_data({_, off, _, _}, Acc) -> Acc;
 check_data({Node, Data, _, _}, {Ready, RT}) -> {[{Node, Data} | Ready], RT}.
+
+%% @private
+reconnect_later(Name, TimeList) ->
+  case proplists:get_value(Name, TimeList) of %use connect time to update state
+    undefined -> false; %no start time for this node
+    Time ->
+      timer:send_after(Time, {update, Name, Time}), %set connect timer
+      true
+  end.
+
+%% @private
+turn_off_node([{Name, realtime, Max, Strategy}]) -> %set this node to off for realtime calls
+  ets:insert(?ETS, {Name, off, Max, Strategy});
+turn_off_node(_) -> ok.

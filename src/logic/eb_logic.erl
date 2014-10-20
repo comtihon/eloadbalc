@@ -25,7 +25,9 @@ get_realtime_data(Realtime) ->
   lists:foldl(
     fun({Node, Max, Strategy}, Collected) ->
       case fetch_node_data(Node, Strategy) of
-        Data when Data > Max; Data == off -> Collected;
+        Data when Data > Max; Data == off ->
+          eb_logic_worker:restart_node(Node), %ask collector to restart node
+          Collected;
         Data -> [{Node, Data} | Collected]
       end
     end, [], Realtime).

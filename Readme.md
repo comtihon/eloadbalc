@@ -14,14 +14,17 @@ Sample configuration:
 
     {
         Metric,
-        [{Node, Time, MaxValue}]
+        [{Node, ConnectTime, UpdateTime, MaxValue}]
     }
 Where Metric is atom `cpu`, `ram` or `counter`.  
 `cpu` means that logic will collect cpu load percentage from all of your worker nodes.  
 `ram` will collect free memory percentage.  
 `counter` will collect statistics of run queue.  
 `Node` is your node name with address, as an atom, f.e. `eloadbalc@127.0.0.1`.  
-`Time` is an atom `realtime` or integer value in milliseconds, means update frequency of statistics. Realtime requests 
+`ConnectTime` is a time for your balancer node to connect to worker. When node is down and error `{badrpc, nodedown}` is got
+- this time is used against `UpdateTime`. __Important!__ Do not set this time too little, as often rpc calls can prevent your
+ worker node from starting.  
+`UpdateTime` is an atom `realtime` or integer value in milliseconds, means update frequency of statistics. Realtime requests 
 will ask node on every `get_less_loaded` node request. They are more direct, but can produce load themselves.  
 `MaxValue` is an integer value of maximum load. If current load exceeds this value - node will be turned off - and won't 
 act in `get_less_loaded` calls.  
