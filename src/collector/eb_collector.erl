@@ -23,7 +23,9 @@ collect_ram_usage() ->
   {All, _, _} = memsup:get_memory_data(),
   Info = memsup:get_system_memory_data(),
   Free = proplists:get_value(free_memory, Info),
- 100 - round((100 / All) * Free).
+  Buffered = proplists:get_value(buffered_memory, Info),
+  Cached = proplists:get_value(cached_memory, Info),
+ 100 - round((100 / All) * (Free + Buffered + Cached)).
 
 %% Get length of tasks run queue
 -spec collect_run_queue() -> integer().
