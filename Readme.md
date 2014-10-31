@@ -35,3 +35,9 @@ If you want to add your nodes after configuring balancer - use `eloadbalc:add_no
 To connect eloadbalc to your app - add `eloadbalc_sup` to your supervision tree, and pass the configuration to it. It 
 will start one server per your balancer system node. Than you can use `eloadbalc:get_less_loaded/0` to obtain less loaded
  node.
+ 
+#### Troubleshooting 
+If `eb_logic_worker` can't connect to remote node for statistics collection and you get badrpc error - first chech if rpc
+protocol is allowed in your network firewall rules and two nodes have the same secret.  
+If nodes can connect to each other, but you can't call eb_collector - check if it's code is loaded in the system. Simply
+call `eb_collector:collect...` when your application start for loading the code.
