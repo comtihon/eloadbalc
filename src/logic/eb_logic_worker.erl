@@ -140,11 +140,14 @@ handle_cast(_Request, State) ->
   {stop, Reason :: term(), NewState :: #state{}}).
 handle_info({update, Name, Time}, State = #state{timelist = TimeList}) -> %update node information
   [{Name, _, Max, Strategy}] = ets:lookup(?ETS, Name),
-  case eb_logic:fetch_node_data(Name, Strategy) of  %got rpc error, node is down
+  try eb_logic:fetch_node_data(Name, Strategy) of  %got rpc error, node is down
     off -> reconnect_later(Name, TimeList); %reconnect to it later
     Data ->
       check_max(Name, Data, Max, Strategy), %check max logic  (off node or no)
-      timer:send_after(Time, {update, Name, Time})  %update timer
+      erlang:send_after(Time, self(), {update, Name, Time})  %update timer
+  catch %in case of arithmetic expressions
+    _:_ ->
+      reconnect_later(Name, TimeList) %reconnect to it later
   end,
   {noreply, State};
 handle_info(_Info, State) ->
@@ -193,7 +196,7 @@ set_up_node({Name, StartTime, realtime, Max}, Strategy) when is_atom(Name) -> %%
   ets:insert(?ETS, {Name, realtime, Max, Strategy}),
   {Name, StartTime};
 set_up_node({Name, StartTime, Time, Max}, Strategy) when is_atom(Name) -> %% Run timer, get first launch data and save conf
-  timer:send_after(Time, {update, Name, Time}),
+  erlang:send_after(Time, self(), {update, Name, Time}),
   Data = eb_logic:fetch_node_data(Name, Strategy),
   ets:insert(?ETS, {Name, Data, Max, Strategy}),
   {Name, StartTime}.
@@ -212,7 +215,7 @@ reconnect_later(Name, TimeList) ->
   case proplists:get_value(Name, TimeList) of %use connect time to update state
     undefined -> false; %no start time for this node
     Time ->
-      timer:send_after(Time, {update, Name, Time}), %set connect timer
+      erlang:send_after(Time, self(), {update, Name, Time}), %set connect timer
       true
   end.
 
